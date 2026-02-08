@@ -1,174 +1,116 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HK AI - BRUTAL</title>
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body {
-            margin: 0; padding: 0; background: #000; color: #000;
-            font-family: 'Unbounded', sans-serif; height: 100vh;
-            display: flex; flex-direction: column; overflow: hidden;
-        }
-        #bg-glass {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 0; opacity: 0.1; pointer-events: none;
-            font-family: monospace; color: #fff; font-size: 10px;
-        }
-        header { padding: 25px 20px; text-align: center; z-index: 10; }
-        .logo-box {
-            background: #fff; color: #000; display: inline-block; padding: 12px 35px;
-            border-radius: 12px; font-weight: 900; font-size: 20px; letter-spacing: 1px;
-            text-transform: uppercase; box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
-        }
-        #chat-container {
-            flex: 1; overflow-y: auto; padding: 20px; display: flex;
-            flex-direction: column; gap: 12px; z-index: 1; position: relative;
-        }
-        .message {
-            max-width: 85%; padding: 14px 18px; font-size: 14px; font-weight: 700;
-            line-height: 1.3; border-radius: 15px; word-wrap: break-word;
-            animation: slideUp 0.3s ease;
-        }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .ai-msg { align-self: flex-start; background: #fff; border-bottom-left-radius: 2px; }
-        .user-msg { align-self: flex-end; background: #fff; border-bottom-right-radius: 2px; }
-        .footer { padding: 20px; display: flex; gap: 12px; background: #000; z-index: 10; }
-        .input-box {
-            flex: 1; background: #fff; border: none; padding: 18px 20px;
-            border-radius: 15px; font-size: 15px; font-weight: 700; outline: none;
-            font-family: 'Unbounded', sans-serif;
-        }
-        .send-btn {
-            width: 58px; height: 58px; background: #fff; border-radius: 15px;
-            border: none; display: flex; align-items: center; justify-content: center;
-            cursor: pointer; transition: 0.2s;
-        }
-        #typing { color: #fff; font-size: 10px; padding: 0 30px 10px; display: none; font-weight: 700; letter-spacing: 2px; }
-    </style>
-</head>
-<body>
-    <div id="bg-glass"></div>
-    <header><div class="logo-box">HK AI</div></header>
-    <div id="chat-container"></div>
-    <div id="typing">ГЕНЕРАЦИЯ...</div>
-    <div class="footer">
-        <input type="text" id="user-input" class="input-box" placeholder="ТЕКСТ..." autocomplete="off">
-        <button id="send-btn" class="send-btn">
-            <svg viewBox="0 0 24 24" width="28" height="28"><path fill="black" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-        </button>
-    </div>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, onChildAdded, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+    // Конфиг Firebase
+    const firebaseConfig = {
+        apiKey: "AIzaSyDpPOgY_Jc8QjUq7MSa4rPH26YPXS716VI",
+        authDomain: "hk-ai-bf133.firebaseapp.com",
+        projectId: "hk-ai-bf133",
+        databaseURL: "https://hk-ai-bf133-default-rtdb.europe-west1.firebasedatabase.app/",
+        appId: "1:1009853924666:web:fa4e356cf060d747f8bc03"
+    };
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDpPOgY_Jc8QjUq7MSa4rPH26YPXS716VI",
-            authDomain: "hk-ai-bf133.firebaseapp.com",
-            projectId: "hk-ai-bf133",
-            databaseURL: "https://hk-ai-bf133-default-rtdb.europe-west1.firebasedatabase.app/",
-            appId: "1:1009853924666:web:fa4e356cf060d747f8bc03"
-        };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const messagesRef = ref(db, 'chat_messages');
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const messagesRef = ref(db, 'chat_messages');
+    // Настройки Gemini напрямую через Fetch (так надежнее для Mini App)
+    const GEMINI_API_KEY = "AIzaSyDQfDlE0SlKK8iDXWz_nr-nTF7IC6LeilM";
+    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-        const genAI = new GoogleGenerativeAI("AIzaSyDQfDlE0SlKK8iDXWz_nr-nTF7IC6LeilM");
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            systemInstruction: "ТЫ — HK AI ОТ HAKOS. ТВОЙ СТИЛЬ: БРУТАЛЬНЫЙ, ЛАКОНИЧНЫЙ. ПИШИ КОРОТКО И КАПСОМ."
-        });
+    const container = document.getElementById('chat-container');
+    const input = document.getElementById('user-input');
+    const typing = document.getElementById('typing');
 
-        const container = document.getElementById('chat-container');
-        const input = document.getElementById('user-input');
-        const typing = document.getElementById('typing');
+    let waitingForConfirm = false;
 
-        let waitingForConfirm = false;
+    async function sendMessage() {
+        const text = input.value.trim();
+        if (!text) return;
 
-        async function sendMessage() {
-            const text = input.value.trim();
-            if (!text) return;
-            const upperText = text.toLowerCase();
-
-            // Логика очистки
-            if (upperText === "очисти чат") {
-                addMessage("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
-                waitingForConfirm = true;
-                input.value = "";
-                return;
-            }
-
-            if (waitingForConfirm) {
-                if (upperText === "да") {
-                    await remove(messagesRef);
-                    container.innerHTML = "";
-                    addMessage("ИСТОРИЯ ОЧИЩЕНА.", "ai");
-                } else {
-                    addMessage("ОТМЕНЕНО.", "ai");
-                }
-                waitingForConfirm = false;
-                input.value = "";
-                return;
-            }
-
-            // Обычная отправка
-            await push(messagesRef, { text, sender: "user", timestamp: Date.now() });
+        if (text.toLowerCase() === "очисти чат") {
+            addMessage("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
+            waitingForConfirm = true;
             input.value = "";
-            typing.style.display = "block";
-
-            try {
-                const result = await model.generateContent(text);
-                const response = await result.response;
-                const aiText = response.text().toUpperCase();
-                await push(messagesRef, { text: aiText, sender: "ai", timestamp: Date.now() });
-            } catch (e) {
-                console.error("Ошибка Gemini:", e);
-                addMessage("ОШИБКА СВЯЗИ С ЯДРОМ.", "ai");
-            } finally {
-                typing.style.display = "none";
-            }
+            return;
         }
 
-        function addMessage(text, sender) {
-            const div = document.createElement('div');
-            div.className = `message ${sender === 'user' ? 'user-msg' : 'ai-msg'}`;
-            div.innerText = text;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        document.getElementById('send-btn').addEventListener('click', sendMessage);
-        input.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
-
-        // Слушаем базу
-        onChildAdded(messagesRef, (snapshot) => {
-            const data = snapshot.val();
-            addMessage(data.text, data.sender);
-        });
-
-        // Если база очищена удаленно
-        onValue(messagesRef, (snapshot) => {
-            if (!snapshot.exists()) {
+        if (waitingForConfirm) {
+            if (text.toLowerCase() === "да") {
+                await remove(messagesRef);
                 container.innerHTML = "";
+                addMessage("ИСТОРИЯ ОЧИЩЕНА.", "ai");
+            } else {
+                addMessage("ОТМЕНЕНО.", "ai");
             }
-        });
+            waitingForConfirm = false;
+            input.value = "";
+            return;
+        }
 
-        // Фон
-        const bg = document.getElementById('bg-glass');
-        setInterval(() => {
-            const span = document.createElement('span');
-            span.innerText = "01$#"[Math.floor(Math.random()*4)];
-            span.style.position = 'absolute';
-            span.style.left = Math.random()*100+'%';
-            span.style.top = Math.random()*100+'%';
-            bg.appendChild(span);
-            setTimeout(() => span.remove(), 1500);
-        }, 150);
-    </script>
-</body>
-</html>
+        // Сохраняем в Firebase
+        await push(messagesRef, { text, sender: "user", timestamp: Date.now() });
+        input.value = "";
+        typing.style.display = "block";
+
+        try {
+            // Прямой запрос к Google API без лишних библиотек
+            const response = await fetch(GEMINI_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: `Ты — HK AI. Отвечай кратко и капсом. Запрос: ${text}` }] }]
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates[0].content.parts[0].text) {
+                const aiText = data.candidates[0].content.parts[0].text.toUpperCase();
+                await push(messagesRef, { text: aiText, sender: "ai", timestamp: Date.now() });
+            } else {
+                throw new Error(JSON.stringify(data)); // Бросаем ошибку если API ответил что-то не то
+            }
+
+        } catch (e) {
+            console.error("DEBUG:", e);
+            // Выводим часть ошибки на экран для диагностики
+            addMessage("ОШИБКА ЯДРА: " + e.message.substring(0, 30), "ai");
+        } finally {
+            typing.style.display = "none";
+        }
+    }
+
+    function addMessage(text, sender) {
+        const div = document.createElement('div');
+        div.className = `message ${sender === 'user' ? 'user-msg' : 'ai-msg'}`;
+        div.innerText = text;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    document.getElementById('send-btn').addEventListener('click', sendMessage);
+    input.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
+
+    onChildAdded(messagesRef, (snapshot) => {
+        const data = snapshot.val();
+        addMessage(data.text, data.sender);
+    });
+
+    onValue(messagesRef, (snapshot) => {
+        if (!snapshot.exists()) container.innerHTML = "";
+    });
+
+    // Фоновые символы
+    const bg = document.getElementById('bg-glass');
+    setInterval(() => {
+        const span = document.createElement('span');
+        span.innerText = "01$#"[Math.floor(Math.random()*4)];
+        span.style.position = 'absolute';
+        span.style.left = Math.random()*100+'%';
+        span.style.top = Math.random()*100+'%';
+        bg.appendChild(span);
+        setTimeout(() => span.remove(), 1500);
+    }, 150);
+</script>
