@@ -24,7 +24,6 @@
         .logo-box {
             background: #fff; color: #000; display: inline-block; padding: 10px 30px;
             border-radius: 12px; font-weight: 900; font-size: 18px; text-transform: uppercase;
-            box-shadow: 0 0 15px rgba(255,255,255,0.2);
         }
         #chat-container {
             flex: 1; overflow-y: auto; padding: 20px; display: flex;
@@ -33,6 +32,7 @@
         .message {
             max-width: 85%; padding: 14px 18px; font-size: 14px; font-weight: 700;
             line-height: 1.3; border-radius: 15px; word-wrap: break-word;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
         .ai-msg { align-self: flex-start; background: #fff; border-bottom-left-radius: 2px; }
         .user-msg { align-self: flex-end; background: #fff; border-bottom-right-radius: 2px; }
@@ -80,14 +80,14 @@
         let isConfirming = false;
 
         async function callGemini(text) {
-            // ИСПОЛЬЗУЕМ gemini-1.5-flash-latest - САМАЯ АКТУАЛЬНАЯ МОДЕЛЬ
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
+            // ИЗМЕНИЛИ НА v1 И ПРОСТО gemini-1.5-flash (БЕЗ LATEST) ДЛЯ СТАБИЛЬНОСТИ
+            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
             
             const response = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: `ТЫ — HK AI. ОТВЕЧАЙ КРАТКО, ЛАКОНИЧНО И КАПСОМ. ТЫ ЧАСТЬ HAKOS. ЗАПРОС: ${text}` }] }]
+                    contents: [{ parts: [{ text: `ТЫ — HK AI. ОТВЕЧАЙ КРАТКО, КАПСОМ. ТЫ — ЧАСТЬ HAKOS. ТЕКСТ: ${text}` }] }]
                 })
             });
 
@@ -100,17 +100,17 @@
             const val = input.value.trim();
             if (!val) return;
 
-            // Логика промокодов
+            // Логика промокодов (Работают локально!)
             if (val.toUpperCase() === "XYRO") {
                 addMsg("ПРОМОКОД XYRO: +5 HK ЗАЧИСЛЕНО.", "ai");
                 input.value = ""; return;
             }
             if (val === "/NOTBAN") {
-                addMsg("ADMIN PANEL: ДОСТУП РАЗРЕШЕН.", "ai");
+                addMsg("ADMIN PANEL: ДОСТУП РАЗРЕШЕН. ПРИВЕТ, АДМИН.", "ai");
                 input.value = ""; return;
             }
 
-            // Логика очистки
+            // Очистка чата
             if (val.toLowerCase() === "очисти чат") {
                 addMsg("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
                 isConfirming = true;
@@ -129,6 +129,7 @@
                 input.value = ""; return;
             }
 
+            // Отправка в Firebase
             messagesRef.push({ text: val, sender: "user" });
             input.value = "";
             typing.style.display = "block";
@@ -138,7 +139,12 @@
                 messagesRef.push({ text: aiRes, sender: "ai" });
             } catch (e) {
                 console.error(e);
-                addMsg("ОШИБКА: " + e.message.toUpperCase(), "ai");
+                // Если Failed to fetch — это 100% регион
+                if (e.message.includes("fetch")) {
+                    addMsg("ОШИБКА: НУЖЕН VPN (GOOGLE БЛОКИРУЕТ РЕГИОН).", "ai");
+                } else {
+                    addMsg("ОШИБКА: " + e.message.toUpperCase(), "ai");
+                }
             } finally {
                 typing.style.display = "none";
             }
@@ -160,7 +166,7 @@
             addMsg(data.text, data.sender);
         });
 
-        // Майнинг-символы под стеклом
+        // Эффект майнинга
         const bg = document.getElementById('bg-glass');
         setInterval(() => {
             const s = document.createElement('span');
