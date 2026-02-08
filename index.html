@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HK AI - HAKOS</title>
+    <title>HK AI - BRUTAL</title>
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&display=swap" rel="stylesheet">
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -72,7 +72,6 @@
         const db = firebase.database();
         const messagesRef = db.ref('chat_messages');
 
-        // ВСТАВИЛ ТВОЙ КЛЮЧ
         const API_KEY = "AIzaSyDQfDlE0SlKK8iDXWz_nr-nTF7IC6LeilM";
         
         const container = document.getElementById('chat-container');
@@ -81,8 +80,8 @@
         let isConfirming = false;
 
         async function callGemini(text) {
-            // Используем v1beta — она лучше всего понимает модель Flash
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+            // ПЛАН В: Используем gemini-pro. Она часто работает там, где flash выдает ошибку "Not Found"
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`;
             
             const response = await fetch(url, {
                 method: "POST",
@@ -95,10 +94,27 @@
             const data = await response.json();
             
             if (data.error) {
-                console.error("GOOGLE ERROR:", data.error);
+                // Если gemini-pro тоже не найдена, пробуем последний шанс — gemini-1.0-pro
+                if (data.error.message.includes("not found")) {
+                    return callGeminiBackup(text);
+                }
                 throw new Error(data.error.message);
             }
             
+            return data.candidates[0].content.parts[0].text.toUpperCase();
+        }
+
+        async function callGeminiBackup(text) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: `ТЫ — HK AI. КАПСОМ: ${text}` }] }]
+                })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
             return data.candidates[0].content.parts[0].text.toUpperCase();
         }
 
@@ -106,21 +122,12 @@
             const val = input.value.trim();
             if (!val) return;
 
-            // Промокоды (вшиты железно)
-            if (val.toUpperCase() === "XYRO") {
-                addMsg("ПРОМОКОД XYRO: +5 HK.", "ai");
-                input.value = ""; return;
-            }
-            if (val === "/NOTBAN") {
-                addMsg("ADMIN PANEL: ДОСТУП РАЗРЕШЕН.", "ai");
-                input.value = ""; return;
-            }
+            if (val.toUpperCase() === "XYRO") { addMsg("ПРОМОКОД XYRO: +5 HK.", "ai"); input.value = ""; return; }
+            if (val === "/NOTBAN") { addMsg("ADMIN PANEL: ACTIVATED.", "ai"); input.value = ""; return; }
 
-            // Очистка
             if (val.toLowerCase() === "очисти чат") {
                 addMsg("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
-                isConfirming = true;
-                input.value = ""; return;
+                isConfirming = true; input.value = ""; return;
             }
 
             if (isConfirming) {
@@ -128,14 +135,10 @@
                     messagesRef.remove();
                     container.innerHTML = "";
                     addMsg("ИСТОРИЯ ОЧИЩЕНА.", "ai");
-                } else {
-                    addMsg("ОТМЕНЕНО.", "ai");
-                }
-                isConfirming = false;
-                input.value = ""; return;
+                } else { addMsg("ОТМЕНЕНО.", "ai"); }
+                isConfirming = false; input.value = ""; return;
             }
 
-            // Отправка
             messagesRef.push({ text: val, sender: "user" });
             input.value = "";
             typing.style.display = "block";
@@ -144,8 +147,7 @@
                 const aiRes = await callGemini(val);
                 messagesRef.push({ text: aiRes, sender: "ai" });
             } catch (e) {
-                console.error(e);
-                addMsg("ОШИБКА: " + e.message.toUpperCase(), "ai");
+                addMsg("ОШИБКА ЯДРА. ПЕРЕЗАГРУЗИ ИЛИ ПРОВЕРЬ VPN.", "ai");
             } finally {
                 typing.style.display = "none";
             }
@@ -167,7 +169,6 @@
             addMsg(data.text, data.sender);
         });
 
-        // Символы майнинга
         const bg = document.getElementById('bg-glass');
         setInterval(() => {
             const s = document.createElement('span');
