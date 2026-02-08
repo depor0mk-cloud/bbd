@@ -1,116 +1,163 @@
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
-    // Конфиг Firebase
-    const firebaseConfig = {
-        apiKey: "AIzaSyDpPOgY_Jc8QjUq7MSa4rPH26YPXS716VI",
-        authDomain: "hk-ai-bf133.firebaseapp.com",
-        projectId: "hk-ai-bf133",
-        databaseURL: "https://hk-ai-bf133-default-rtdb.europe-west1.firebasedatabase.app/",
-        appId: "1:1009853924666:web:fa4e356cf060d747f8bc03"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const messagesRef = ref(db, 'chat_messages');
-
-    // Настройки Gemini напрямую через Fetch (так надежнее для Mini App)
-    const GEMINI_API_KEY = "AIzaSyDQfDlE0SlKK8iDXWz_nr-nTF7IC6LeilM";
-    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-    const container = document.getElementById('chat-container');
-    const input = document.getElementById('user-input');
-    const typing = document.getElementById('typing');
-
-    let waitingForConfirm = false;
-
-    async function sendMessage() {
-        const text = input.value.trim();
-        if (!text) return;
-
-        if (text.toLowerCase() === "очисти чат") {
-            addMessage("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
-            waitingForConfirm = true;
-            input.value = "";
-            return;
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HK AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        body {
+            margin: 0; padding: 0; background: #000; color: #000;
+            font-family: 'Unbounded', sans-serif; height: 100vh;
+            display: flex; flex-direction: column; overflow: hidden;
         }
-
-        if (waitingForConfirm) {
-            if (text.toLowerCase() === "да") {
-                await remove(messagesRef);
-                container.innerHTML = "";
-                addMessage("ИСТОРИЯ ОЧИЩЕНА.", "ai");
-            } else {
-                addMessage("ОТМЕНЕНО.", "ai");
-            }
-            waitingForConfirm = false;
-            input.value = "";
-            return;
+        #bg-glass {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0; opacity: 0.1; pointer-events: none; color: #fff; font-size: 10px;
         }
+        header { padding: 20px; text-align: center; z-index: 10; }
+        .logo-box {
+            background: #fff; color: #000; display: inline-block; padding: 10px 30px;
+            border-radius: 12px; font-weight: 900; font-size: 18px; text-transform: uppercase;
+        }
+        #chat-container {
+            flex: 1; overflow-y: auto; padding: 20px; display: flex;
+            flex-direction: column; gap: 12px; z-index: 1; position: relative;
+        }
+        .message {
+            max-width: 85%; padding: 14px 18px; font-size: 14px; font-weight: 700;
+            line-height: 1.3; border-radius: 15px; word-wrap: break-word;
+        }
+        .ai-msg { align-self: flex-start; background: #fff; border-bottom-left-radius: 2px; }
+        .user-msg { align-self: flex-end; background: #fff; border-bottom-right-radius: 2px; }
+        .footer { padding: 20px; display: flex; gap: 10px; background: #000; z-index: 10; }
+        .input-box {
+            flex: 1; background: #fff; border: none; padding: 15px;
+            border-radius: 12px; font-size: 14px; font-weight: 700; font-family: 'Unbounded';
+        }
+        .send-btn {
+            width: 50px; height: 50px; background: #fff; border-radius: 12px;
+            border: none; display: flex; align-items: center; justify-content: center;
+        }
+        #typing { color: #fff; font-size: 10px; padding: 0 25px 10px; display: none; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div id="bg-glass"></div>
+    <header><div class="logo-box">HK AI</div></header>
+    <div id="chat-container">
+        <div class="message ai-msg">Я HK AI ОТ ЭКОСИСТЕМЫ HAKOS. ЗАДАВАЙ ВОПРОСЫ.</div>
+    </div>
+    <div id="typing">ГЕНЕРАЦИЯ...</div>
+    <div class="footer">
+        <input type="text" id="user-input" class="input-box" placeholder="ТЕКСТ..." autocomplete="off">
+        <button id="send-btn" class="send-btn">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path fill="black" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+        </button>
+    </div>
 
-        // Сохраняем в Firebase
-        await push(messagesRef, { text, sender: "user", timestamp: Date.now() });
-        input.value = "";
-        typing.style.display = "block";
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        try {
-            // Прямой запрос к Google API без лишних библиотек
-            const response = await fetch(GEMINI_URL, {
+        const firebaseConfig = {
+            apiKey: "AIzaSyDpPOgY_Jc8QjUq7MSa4rPH26YPXS716VI",
+            authDomain: "hk-ai-bf133.firebaseapp.com",
+            projectId: "hk-ai-bf133",
+            databaseURL: "https://hk-ai-bf133-default-rtdb.europe-west1.firebasedatabase.app/",
+            appId: "1:1009853924666:web:fa4e356cf060d747f8bc03"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const messagesRef = ref(db, 'chat_messages');
+
+        const API_KEY = "AIzaSyDQfDlE0SlKK8iDXWz_nr-nTF7IC6LeilM";
+        const container = document.getElementById('chat-container');
+        const input = document.getElementById('user-input');
+        const typing = document.getElementById('typing');
+
+        let isConfirming = false;
+
+        async function callGemini(text) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+            const response = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: `Ты — HK AI. Отвечай кратко и капсом. Запрос: ${text}` }] }]
+                    contents: [{ parts: [{ text: `Ты — HK AI. Отвечай кратко, капсом. Тема: экосистема HAKOS. Юзер пишет: ${text}` }] }]
                 })
             });
-
             const data = await response.json();
-            
-            if (data.candidates && data.candidates[0].content.parts[0].text) {
-                const aiText = data.candidates[0].content.parts[0].text.toUpperCase();
-                await push(messagesRef, { text: aiText, sender: "ai", timestamp: Date.now() });
-            } else {
-                throw new Error(JSON.stringify(data)); // Бросаем ошибку если API ответил что-то не то
+            return data.candidates[0].content.parts[0].text.toUpperCase();
+        }
+
+        async function handleSend() {
+            const val = input.value.trim();
+            if (!val) return;
+
+            // Логика очистки чата
+            if (val.toLowerCase() === "очисти чат") {
+                addMsg("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
+                isConfirming = true;
+                input.value = "";
+                return;
             }
 
-        } catch (e) {
-            console.error("DEBUG:", e);
-            // Выводим часть ошибки на экран для диагностики
-            addMessage("ОШИБКА ЯДРА: " + e.message.substring(0, 30), "ai");
-        } finally {
-            typing.style.display = "none";
+            if (isConfirming) {
+                if (val.toLowerCase() === "да") {
+                    await remove(messagesRef);
+                    container.innerHTML = "";
+                    addMsg("ИСТОРИЯ ОЧИЩЕНА.", "ai");
+                } else {
+                    addMsg("ОТМЕНЕНО.", "ai");
+                }
+                isConfirming = false;
+                input.value = "";
+                return;
+            }
+
+            // Обычный процесс
+            await push(messagesRef, { text: val, sender: "user" });
+            input.value = "";
+            typing.style.display = "block";
+
+            try {
+                const aiRes = await callGemini(val);
+                await push(messagesRef, { text: aiRes, sender: "ai" });
+            } catch (e) {
+                addMsg("ОШИБКА СЕТИ.", "ai");
+            } finally {
+                typing.style.display = "none";
+            }
         }
-    }
 
-    function addMessage(text, sender) {
-        const div = document.createElement('div');
-        div.className = `message ${sender === 'user' ? 'user-msg' : 'ai-msg'}`;
-        div.innerText = text;
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-    }
+        function addMsg(text, sender) {
+            const d = document.createElement('div');
+            d.className = `message ${sender === 'user' ? 'user-msg' : 'ai-msg'}`;
+            d.innerText = text;
+            container.appendChild(d);
+            container.scrollTop = container.scrollHeight;
+        }
 
-    document.getElementById('send-btn').addEventListener('click', sendMessage);
-    input.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMessage(); });
+        document.getElementById('send-btn').onclick = handleSend;
+        input.onkeydown = (e) => { if(e.key === 'Enter') handleSend(); };
 
-    onChildAdded(messagesRef, (snapshot) => {
-        const data = snapshot.val();
-        addMessage(data.text, data.sender);
-    });
+        onChildAdded(messagesRef, (snap) => {
+            const data = snap.val();
+            addMsg(data.text, data.sender);
+        });
 
-    onValue(messagesRef, (snapshot) => {
-        if (!snapshot.exists()) container.innerHTML = "";
-    });
-
-    // Фоновые символы
-    const bg = document.getElementById('bg-glass');
-    setInterval(() => {
-        const span = document.createElement('span');
-        span.innerText = "01$#"[Math.floor(Math.random()*4)];
-        span.style.position = 'absolute';
-        span.style.left = Math.random()*100+'%';
-        span.style.top = Math.random()*100+'%';
-        bg.appendChild(span);
-        setTimeout(() => span.remove(), 1500);
-    }, 150);
-</script>
+        // Анимация фона
+        const bg = document.getElementById('bg-glass');
+        setInterval(() => {
+            const s = document.createElement('span');
+            s.innerText = "01$#"[Math.floor(Math.random()*4)];
+            s.style.cssText = `position:absolute;left:${Math.random()*100}%;top:${Math.random()*100}%;`;
+            bg.appendChild(s);
+            setTimeout(() => s.remove(), 1000);
+        }, 200);
+    </script>
+</body>
+</html>
