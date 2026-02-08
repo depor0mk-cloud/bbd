@@ -45,7 +45,7 @@
             width: 50px; height: 50px; background: #fff; border-radius: 12px;
             border: none; display: flex; align-items: center; justify-content: center;
         }
-        #typing { color: #fff; font-size: 10px; padding: 0 25px 10px; display: none; font-weight: 700; letter-spacing: 1px; }
+        #typing { color: #fff; font-size: 10px; padding: 0 25px 10px; display: none; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -61,7 +61,6 @@
     </div>
 
     <script>
-        // Инициализация Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyDpPOgY_Jc8QjUq7MSa4rPH26YPXS716VI",
             authDomain: "hk-ai-bf133.firebaseapp.com",
@@ -80,20 +79,20 @@
         const typing = document.getElementById('typing');
         let isConfirming = false;
 
-        // ИСПРАВЛЕННАЯ ФУНКЦИЯ GEMINI (версия v1)
         async function callGemini(text) {
-            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+            // ИСПОЛЬЗУЕМ gemini-1.5-flash-latest - САМАЯ АКТУАЛЬНАЯ МОДЕЛЬ
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
+            
             const response = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: `ТЫ — HK AI ОТ HAKOS. ОТВЕЧАЙ КРАТКО, КАПСОМ. ТЕКСТ ПОЛЬЗОВАТЕЛЯ: ${text}` }] }]
+                    contents: [{ parts: [{ text: `ТЫ — HK AI. ОТВЕЧАЙ КРАТКО, ЛАКОНИЧНО И КАПСОМ. ТЫ ЧАСТЬ HAKOS. ЗАПРОС: ${text}` }] }]
                 })
             });
 
             const data = await response.json();
             if (data.error) throw new Error(data.error.message);
-            
             return data.candidates[0].content.parts[0].text.toUpperCase();
         }
 
@@ -101,12 +100,21 @@
             const val = input.value.trim();
             if (!val) return;
 
-            // Логика очистки чата
+            // Логика промокодов
+            if (val.toUpperCase() === "XYRO") {
+                addMsg("ПРОМОКОД XYRO: +5 HK ЗАЧИСЛЕНО.", "ai");
+                input.value = ""; return;
+            }
+            if (val === "/NOTBAN") {
+                addMsg("ADMIN PANEL: ДОСТУП РАЗРЕШЕН.", "ai");
+                input.value = ""; return;
+            }
+
+            // Логика очистки
             if (val.toLowerCase() === "очисти чат") {
                 addMsg("ВЫ ТОЧНО ХОТИТЕ УДАЛИТЬ ИСТОРИЮ?", "ai");
                 isConfirming = true;
-                input.value = "";
-                return;
+                input.value = ""; return;
             }
 
             if (isConfirming) {
@@ -118,15 +126,7 @@
                     addMsg("ОТМЕНЕНО.", "ai");
                 }
                 isConfirming = false;
-                input.value = "";
-                return;
-            }
-
-            // Пасхалка из инструкций
-            if (val === "/NOTBAN") {
-                addMsg("ADMIN PANEL ACTIVATED. UNLIMITED ACCESS.", "ai");
-                input.value = "";
-                return;
+                input.value = ""; return;
             }
 
             messagesRef.push({ text: val, sender: "user" });
@@ -155,13 +155,12 @@
         document.getElementById('send-btn').onclick = handleSend;
         input.onkeydown = (e) => { if(e.key === 'Enter') handleSend(); };
 
-        // Слушаем новые сообщения
         messagesRef.on('child_added', (snap) => {
             const data = snap.val();
             addMsg(data.text, data.sender);
         });
 
-        // Анимация майнинга на фоне
+        // Майнинг-символы под стеклом
         const bg = document.getElementById('bg-glass');
         setInterval(() => {
             const s = document.createElement('span');
